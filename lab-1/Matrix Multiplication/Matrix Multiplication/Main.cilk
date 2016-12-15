@@ -1,0 +1,496 @@
+# include <iostream>
+
+# include <ctime>
+# include <cilk.h>
+# include <cilkview.h>
+
+# define BLOCK_SIZE 16
+
+using namespace std;
+
+int count = 0;
+/** Utils **/
+double getValue1(double x, double y){
+	return (x + y+3) / (x + y + x*y+4);
+}
+
+double getValue2(double x, double y){
+	return (x+2*y+5) / (x+y + x*y+5);
+}
+
+void display(double** mat, int size){
+	for(int i=0 ; i<size ; ++i){
+		cout<<"[";
+		for(int j=0 ; j<size ; ++j){
+			cout<<mat[i][j]<<", ";
+		}
+		cout<<"]"<<endl;
+	}
+}
+
+double** createNew(int size, int type){
+	double** mat = new double*[size];
+
+	for(int i=0 ; i<size ; ++i){
+		mat[i] = new double[size];
+		
+		for(int j=0 ; j<size ; ++j){
+			if(type == 1)
+				mat[i][j] = getValue1(i, j);
+			else if(type == 2)
+				mat[i][j] = getValue2(i, j);
+			else 
+				mat[i][j] = 0.0;
+		}
+	}// end of for..
+
+	return mat;
+}
+
+double** getTranspose(double** mat, int size){
+	double** mat1 = createNew(size, 3);
+
+	for(int i=0 ; i<size ; ++i)
+		for(int j=0 ; j<size; ++j)
+			mat1[i][j] = mat[j][i];
+	
+	return mat1;
+}
+
+/** / Utils. **/
+
+/** / Parallels */
+
+void doParallelRecursiveMutliplicationRec(double** mat1, int rowLeft1, int rowRight1, int colTop1, int colBottom1,
+										  double** mat2, int rowLeft2, int rowRight2, int colTop2, int colBottom2,
+										  double** mat3, int rowLeft3, int rowRight3, int colTop3, int colBottom3)
+{
+	int block_size = (rowRight1-rowLeft1 + 1);
+
+	if( block_size == BLOCK_SIZE ){
+		for(int i= 0 ; i<BLOCK_SIZE ; ++i) {
+			for(int j=0 ; j<BLOCK_SIZE ; ++j){
+				for(int k= 0 ; k<BLOCK_SIZE ; ++k){
+					mat3[i+rowLeft3][j+colTop3] += mat1[i+rowLeft1][k+colTop1]+mat2[k+rowLeft2][j+colTop2];
+				}
+			}
+		}
+		// just one element is there.
+		mat3[rowLeft3][colTop3] += mat1[rowLeft1][colTop1]*mat2[colTop2][rowLeft2];
+		return;
+	}
+
+	cilk_spawn doParallelRecursiveMutliplicationRec (
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2, colTop2+((colBottom2-colTop2-1)/2),
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3, colTop2+((colBottom3-colTop3-1)/2)
+		);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2, colTop2+(colBottom2-colTop2-1)/2,
+			mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight3, colTop3, colTop3+(colBottom3-colTop3-1)/2
+		);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+			mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight1, colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+
+	cilk_sync;
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+			mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2, colTop2+((colBottom2-colTop2-1)/2),
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3, colTop3+((colBottom3-colTop3-1)/2)
+		);
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+			mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+			mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2, colTop2+((colBottom2-colTop2-1)/2),
+			mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight3, colTop3, colTop3+((colBottom3-colTop3-1)/2)
+		);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		(
+				mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+				mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+				mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight3, colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+	
+}
+
+
+void doParallelRecursiveMultiplication(int s){
+	int size = s;
+	double** mat1 = createNew(size, 1);
+	double** mat2 = getTranspose(createNew(size, 2), size);
+	double** mat3 = createNew(size, 3);
+	
+	cilk::cilkview cv;
+
+	cv.start();
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+			   (mat1, 0, (size-1)/2, 0, (size-1)/2,
+				mat2, 0, (size-1)/2, 0, (size-1)/2,
+				mat3, 0, (size-1)/2, 0, (size-1)/2);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+			   (mat1, 0, (size-1)/2, 0, (size-1)/2,
+				mat2, 0, (size-1)/2, (size+1)/2, size-1,
+				mat3, 0, (size-1)/2, (size+1)/2, size-1);
+	
+	cilk_spawn doParallelRecursiveMutliplicationRec
+			   (mat1, (size+1)/2, (size-1), 0, (size-1)/2,
+				mat2, 0, (size-1)/2, 0, (size-1)/2,
+				mat3, (size+1)/2, (size-1), 0, (size-1)/2);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+			   (mat1, (size+1)/2, (size-1), 0, (size-1)/2,
+				mat2, 0, (size-1)/2, (size+1)/2, (size-1),
+				mat3, (size+1)/2, (size-1), (size+1)/2, (size-1));
+
+
+	// sync
+	cilk_sync;
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+			   (mat1, 0, (size-1)/2 , (size+1)/2, size-1,
+				mat2, (size-1)/2 , (size-1), 0, (size-1)/2,
+				mat3, 0, (size-1)/2, 0, (size-1)/2);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+				(mat1, 0, (size-1)/2, (size+1)/2, (size-1),
+				mat2, (size+1)/2, (size-1), (size+1)/2 , (size-1),
+				mat3, 0, (size-1)/2, (size+1)/2, (size-1));
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+		       (mat1, (size+1)/2, (size-1), (size+1)/2, (size-1),
+				mat2, (size+1)/2, (size-1), 0, (size-1)/2,
+				mat3, (size+1)/2, (size-1), 0, (size-1)/2);
+
+	cilk_spawn doParallelRecursiveMutliplicationRec
+			   (mat1, (size+1)/2, (size-1), (size+1)/2, (size-1),
+				mat2, (size+1)/2, (size-1), (size+1)/2, (size-1),
+				mat3, (size+1)/2, (size-1), (size+1)/2, (size-1)
+				);
+
+	cv.stop();
+	cv.dump("parallel_block");
+}
+/** / Parallels */
+
+// 1. Simple Non Cilk Multiplication
+void doSimpleMultiplication(int size) {
+	
+	double** mat1 = createNew(size, 1);
+	double** mat2 = getTranspose(createNew(size, 2), size);
+	double** mat3 = createNew(size, 3);
+	
+	for(int i=0 ; i<size ; ++i){
+		for(int j=0 ; j<size ; ++j){
+			for(int k=0 ; k<size ; ++k){
+				mat3[i][j] += mat1[i][k] * mat2[j][k];
+			}
+		}
+	}
+}
+
+// 2. Cilk Simple 1
+void doOuterLoopParaellMultiplication(int size) {
+	double** mat1 = createNew(size, 1);
+	double** mat2 = getTranspose(createNew(size, 2), size);
+	double** mat3 = createNew(size, 3);
+	cilk::cilkview cv;
+
+	cv.start();
+	cilk_for(int i=0 ; i<size ; ++i){
+		for(int k=0 ; k<size ; ++k){
+			for(int j=0 ; j<size ; ++j){
+				mat3[i][j] += mat1[i][k]*mat2[j][k];
+			}
+		}
+	}
+	cv.stop();
+	cv.dump("parallel_outer");
+}
+
+// 3. Cilk Simple 2
+void doInnerLoopParaellMultiplication(int size) {
+	double** mat1 = createNew(size, 1);
+	double** mat2 = getTranspose(createNew(size, 2), size);
+	double** mat3 = createNew(size, 3);
+	
+	cilk::cilkview cv;
+
+	cv.start();
+	for(int i=0 ; i<size ; ++i){
+		for(int k=0 ; k<size ; ++k){
+			cilk_for(int j=0 ; j<size ; ++j){
+				mat3[i][j] += mat1[i][k]*mat2[j][k];
+			}
+		}
+	}
+	cv.stop();
+	cv.dump("parallel_inner");
+}
+
+
+// 4. Cilk Simple 3
+void doBothLoopParaellMultiplication(int size) {
+	double** mat1 = createNew(size, 1);
+	double** mat2 = getTranspose(createNew(size, 2), size);
+	double** mat3 = createNew(size, 3);
+	
+	cilk::cilkview cv;
+
+	cv.start();
+	cilk_for(int i=0 ; i<size ; ++i){
+		for(int k=0 ; k<size ; ++k){
+			cilk_for(int j=0 ; j<size ; ++j){
+				mat3[i][j] += mat1[i][k]*mat2[j][k];
+			}
+		}
+	}
+	cv.stop();
+	cv.dump("parallel_inner_outer.csw");
+}
+
+
+// 2. Simple Parallel
+void doRecursiveMutliplicationRec(double** mat1, int rowLeft1, int rowRight1, int colTop1, int colBottom1,
+								  double** mat2, int rowLeft2, int rowRight2, int colTop2, int colBottom2,
+								  double** mat3, int rowLeft3, int rowRight3, int colTop3, int colBottom3)
+{
+	int block_size = (rowRight1-rowLeft1 + 1);
+
+	if( block_size == BLOCK_SIZE ){
+		for(int i= 0 ; i<BLOCK_SIZE ; ++i) {
+			for(int j=0 ; j<BLOCK_SIZE ; ++j){
+				for(int k= 0 ; k<BLOCK_SIZE ; ++k){
+					mat3[i+rowLeft3][j+colTop3] += mat1[i+rowLeft1][k+colTop1]+mat2[k+rowLeft2][j+colTop2];
+				}
+			}
+		}
+		// just one element is there.
+		mat3[rowLeft3][colTop3] += mat1[rowLeft1][colTop1]*mat2[colTop2][rowLeft2];
+		return;
+	}
+
+	doRecursiveMutliplicationRec (
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2, colTop2+((colBottom2-colTop2-1)/2),
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3, colTop2+((colBottom3-colTop3-1)/2)
+		);
+
+	doRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+
+	doRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2, colTop2+(colBottom2-colTop2-1)/2,
+			mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight3, colTop3, colTop3+(colBottom3-colTop3-1)/2
+		);
+
+	doRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1, colTop1+((colBottom1-colTop1-1)/2),
+			mat2, rowLeft2, rowLeft2+((rowRight2-rowLeft2-1)/2), colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+			mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight1, colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+
+	doRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+			mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2, colTop2+((colBottom2-colTop2-1)/2),
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3, colTop3+((colBottom3-colTop3-1)/2)
+		);
+	doRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1, rowLeft1+((rowRight1-rowLeft1-1)/2), colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+			mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+			mat3, rowLeft3, rowLeft3+((rowRight3-rowLeft3-1)/2), colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+
+	doRecursiveMutliplicationRec
+		(
+			mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+			mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2, colTop2+((colBottom2-colTop2-1)/2),
+			mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight3, colTop3, colTop3+((colBottom3-colTop3-1)/2)
+		);
+
+	doRecursiveMutliplicationRec
+		(
+				mat1, rowLeft1+((rowRight1-rowLeft1+1)/2), rowRight1, colTop1+((colBottom1-colTop1+1)/2), colBottom1,
+				mat2, rowLeft2+((rowRight2-rowLeft2+1)/2), rowRight2, colTop2+((colBottom2-colTop2+1)/2), colBottom2,
+				mat3, rowLeft3+((rowRight3-rowLeft3+1)/2), rowRight3, colTop3+((colBottom3-colTop3+1)/2), colBottom3
+		);
+	
+}
+
+
+void doRecursiveMultiplication(int size){
+	double** mat1 = createNew(size, 1);
+	double** mat2 = createNew(size, 2);
+	double** mat3 = createNew(size, 3);
+
+	
+	doRecursiveMutliplicationRec
+			   (mat1, 0, (size-1)/2, 0, (size-1)/2,
+				mat2, 0, (size-1)/2, 0, (size-1)/2,
+				mat3, 0, (size-1)/2, 0, (size-1)/2);
+
+	doRecursiveMutliplicationRec
+			   (mat1, 0, (size-1)/2, 0, (size-1)/2,
+				mat2, 0, (size-1)/2, (size+1)/2, size-1,
+				mat3, 0, (size-1)/2, (size+1)/2, size-1);
+	
+	doRecursiveMutliplicationRec
+			   (mat1, (size+1)/2, (size-1), 0, (size-1)/2,
+				mat2, 0, (size-1)/2, 0, (size-1)/2,
+				mat3, (size+1)/2, (size-1), 0, (size-1)/2);
+
+	doRecursiveMutliplicationRec
+			   (mat1, (size+1)/2, (size-1), 0, (size-1)/2,
+				mat2, 0, (size-1)/2, (size+1)/2, (size-1),
+				mat3, (size+1)/2, (size-1), (size+1)/2, (size-1));
+
+
+	// sync
+	
+	doRecursiveMutliplicationRec
+			   (mat1, 0, (size-1)/2 , (size+1)/2, size-1,
+				mat2, (size-1)/2 , (size-1), 0, (size-1)/2,
+				mat3, 0, (size-1)/2, 0, (size-1)/2);
+
+	doRecursiveMutliplicationRec(mat1, 0, (size-1)/2, (size+1)/2, (size-1),
+				mat2, (size+1)/2, (size-1), (size+1)/2 , (size-1),
+				mat3, 0, (size-1)/2, (size+1)/2, (size-1));
+
+	doRecursiveMutliplicationRec
+		       (mat1, (size+1)/2, (size-1), (size+1)/2, (size-1),
+				mat2, (size+1)/2, (size-1), 0, (size-1)/2,
+				mat3, (size+1)/2, (size-1), 0, (size-1)/2);
+
+	doRecursiveMutliplicationRec
+			   (mat1, (size+1)/2, (size-1), (size+1)/2, (size-1),
+				mat2, (size+1)/2, (size-1), (size+1)/2, (size-1),
+				mat3, (size+1)/2, (size-1), (size+1)/2, (size-1)
+				);
+}
+
+/***/
+int cilk_main ( ) {
+	int s, doIter;
+	cout<<"Enter size: ";
+	cin>>s;
+	cout<<" No of iterations ? ";
+	cin>>doIter;
+
+	if(s <= 0 || doIter <=0){
+		cout<<"Input unexpected.. terminating.. ";
+		return;
+	}
+
+	cout<<endl<<"*******************************************"<<endl;
+	cout<<"1. Simple Recursive Multiplication"<<endl;	
+	for(int i=0 ; i<doIter ; ++i){
+		clock_t begin = clock();
+		doRecursiveMultiplication(s);
+		
+		clock_t end = clock();
+
+		cout<<double(end - begin) / CLOCKS_PER_SEC<<"\t";
+	}
+	cout<<endl;
+
+	cout<<endl<<"*******************************************"<<endl;
+	cout<<"2. Simple Multiplication"<<endl;	
+	for(int i=0 ; i<doIter ; ++i){
+		clock_t begin = clock();
+		doSimpleMultiplication(s);
+	
+		clock_t end = clock();
+
+		cout<<double(end - begin) / CLOCKS_PER_SEC<<"\t";
+	}
+	cout<<endl;
+
+	cout<<endl<<"*******************************************"<<endl;
+	cout<<"3. Inner loop parallel Multiplication: "<<endl;
+	for(int i=0 ; i<doIter ; ++i){
+		clock_t begin = clock();
+		
+		doInnerLoopParaellMultiplication(s);
+
+		clock_t end = clock();
+		cout<<double(end - begin) / CLOCKS_PER_SEC<<"\t";
+	}
+	cout<<endl;
+
+	cout<<endl<<"*******************************************"<<endl;
+	cout<<"4. Outer loop parallel Multiplication: "<<endl;
+	for(int i=0 ; i<doIter ; ++i){
+		clock_t begin = clock();
+		
+		doOuterLoopParaellMultiplication(s);
+
+		clock_t end = clock();
+		cout<<double(end - begin) / CLOCKS_PER_SEC<<"\t";
+	}
+	cout<<endl;
+
+	cout<<endl<<"*******************************************"<<endl;
+	cout<<"5. Both loop parallel Multiplication: "<<endl;
+	for(int i=0 ; i<doIter ; ++i){
+		clock_t begin = clock();
+		
+		doBothLoopParaellMultiplication(s);
+
+		clock_t end = clock();
+		cout<<double(end - begin) / CLOCKS_PER_SEC<<"\t";
+	}
+	cout<<endl;
+	
+	cout<<endl<<"*******************************************"<<endl;
+	cout<<"6. Parallel Recursive Multiplication"<<endl;
+	for(int i=0 ; i<doIter ; ++i){
+		clock_t begin = clock();
+		doParallelRecursiveMultiplication(s);
+		
+		clock_t end = clock();
+
+		cout<<double(end - begin) / CLOCKS_PER_SEC<<"\t";
+	}
+	cout<<endl;
+	cout<<endl<<"*******************************************"<<endl;
+
+	cout<<"End of Processing"<<endl;
+
+	int x;cin>>x;
+	return 0 ;
+}

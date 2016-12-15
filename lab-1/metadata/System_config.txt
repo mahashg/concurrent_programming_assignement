@@ -1,0 +1,3 @@
+Processor: Intel Core i3-370M CPU M372 @ 2.40 GHz
+RAM: 3.00 GB
+Cache L3 Cache 3MB

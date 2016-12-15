@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<VisualStudioProject
+	ProjectType="Intel C++ Project"
+	Version="13.0"
+	Name="Matrix Multiplication"
+	ProjectGUID="{60E6F7E1-E016-49A8-9C9A-336374DE8C31}"
+	VCNestedProjectGUID="{ED7EC53A-6B6B-4D90-A69A-B33BBB1A83F5}"
+	VCNestedProjectFileName="Matrix Multiplication.vcproj"
+	>
+	<Configurations/>
+	<Files/>
+</VisualStudioProject>

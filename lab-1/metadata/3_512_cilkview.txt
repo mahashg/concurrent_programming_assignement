@@ -1,0 +1,21 @@
+Whole Program Statistics:
+
+Cilkview Scalability Analyzer V1.1.0, Build 8504
+1) Parallelism Profile
+   Work :                           			 21,642,392,426 instructions
+   Span :                            			 243,053,418 instructions
+   Burdened span :                   			 35,514,528,618 instructions
+   Parallelism :                                 89.04
+   Burdened parallelism :                        0.61
+   Number of spawns/syncs:                       133,955,584
+   Average instructions / strand :               53
+   Strands along span :                          4,718,593
+   Average instructions / strand on span :       51
+   Total number of atomic instructions :         133,959,021
+   Frame count :                                 402653188
+2) Speedup Estimate
+   2 processors:         0.53 - 2.00
+   4 processors:         0.43 - 4.00
+   8 processors:         0.39 - 8.00
+   16 processors:        0.37 - 16.00
+   32 processors:        0.37 - 32.00
